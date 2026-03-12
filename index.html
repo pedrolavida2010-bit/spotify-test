@@ -498,7 +498,7 @@ async function startGame() {
   try {
     const all = await loadPlaylistTracks(selectedPlaylist.id);
     if (all.length < 3) { showToast(`Playlist trop petite (${all.length} titres)`); goToPlaylists(); return; }
-    allPlaylistTracks = all;
+    allPlaylistTracks = [...all];
     tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
     document.getElementById('totalRounds').textContent = tracks.length;
     buildWaveform(); loadRound();
