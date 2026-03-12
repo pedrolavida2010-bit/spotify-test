@@ -274,6 +274,7 @@ let accessToken = null;
 let selectedDeviceId = null, selectedDeviceName = null;
 let playlists = [], selectedPlaylist = null;
 let tracks = [], currentRound = 0, currentTrack = null;
+let allPlaylistTracks = [];
 let currentAttempt = 0, score = 0, roundHistory = [];
 let roundActive = false, selectedSuggestion = null;
 let clipTimer = null, waveInterval = null;
@@ -497,6 +498,7 @@ async function startGame() {
   try {
     const all = await loadPlaylistTracks(selectedPlaylist.id);
     if (all.length < 3) { showToast(`Playlist trop petite (${all.length} titres)`); goToPlaylists(); return; }
+    allPlaylistTracks = all;
     tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
     document.getElementById('totalRounds').textContent = tracks.length;
     buildWaveform(); loadRound();
@@ -575,7 +577,7 @@ function onGuessInput(){
 function onGuessKey(e){if(e.key==='Enter')validateGuess();if(e.key==='Escape')document.getElementById('suggestions').style.display='none';}
 function searchSuggestions(q){
   const ql=q.toLowerCase();
-  const r=tracks.filter(t=>t.name.toLowerCase().includes(ql)||t.artists.some(a=>a.name.toLowerCase().includes(ql))).slice(0,7);
+  const r = allPlaylistTracks.filter(t => t.name.toLowerCase().includes(ql) || t.artists.some(a => a.name.toLowerCase().includes(ql))).slice(0, 7);
   const box=document.getElementById('suggestions');
   if(!r.length){box.style.display='none';return;}
   box.innerHTML='';
