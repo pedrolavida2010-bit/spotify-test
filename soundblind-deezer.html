@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoundBlind — Devine la chanson</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#0a0a0a;
+    --dark:#111;
+    --card:#1a1a1a;
+    --border:#2a2a2a;
+    --deezer:#A238FF;
+    --deezer-alt:#00C7F2;
+    --deezer-hover:#b55fff;
+    --red:#e8445a;
+    --yellow:#f5c842;
+    --white:#f0ede8;
+    --muted:#888;
+    --radius:12px
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--black);color:var(--white);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+  .screen{display:none;min-height:100vh}.screen.active{display:flex;flex-direction:column}
+
+  /* LOGIN */
+  #loginScreen{align-items:center;justify-content:center;padding:2rem;position:relative}
+  .bg-g{position:fixed;width:600px;height:600px;border-radius:50%;filter:blur(120px);opacity:.12;pointer-events:none}
+  .bg-g.g1{background:var(--deezer);top:-200px;right:-200px}
+  .bg-g.g2{background:var(--deezer-alt);bottom:-200px;left:-200px}
+  .login-box{text-align:center;max-width:440px;width:100%;z-index:1;animation:fadeUp .6s ease}
+  .logo-text{font-family:'Bebas Neue',sans-serif;font-size:clamp(4rem,12vw,7rem);letter-spacing:.05em;line-height:.9;background:linear-gradient(135deg,var(--white),var(--deezer));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.5rem}
+  .logo-sub{font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;margin-bottom:2rem}
+  .config-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1rem;text-align:left}
+  .config-box label{display:block;font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
+  .config-box input{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;color:var(--white);font-family:'Space Mono',monospace;font-size:.82rem;outline:none;transition:border-color .2s}
+  .config-box input:focus{border-color:var(--deezer)}
+  .config-box input::placeholder{color:#444}
+  .hint-box{background:rgba(162,56,255,.07);border:1px solid rgba(162,56,255,.2);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;font-size:.78rem;line-height:1.6;color:var(--muted);text-align:left}
+  .hint-box code{color:var(--deezer);word-break:break-all;display:block;margin-top:.25rem}
+  .hint-box a{color:var(--deezer)}
+  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.85rem 2rem;border-radius:50px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:.95rem;cursor:pointer;border:none;transition:all .2s}
+  .btn-deezer{background:var(--deezer);color:var(--white);width:100%;justify-content:center}
+  .btn-deezer:hover{background:var(--deezer-hover);transform:translateY(-1px);box-shadow:0 8px 24px rgba(162,56,255,.35)}
+  .btn-outline{background:transparent;color:var(--white);border:1px solid var(--border)}
+  .btn-outline:hover{border-color:var(--muted)}
+
+  /* PLAYLIST */
+  #playlistScreen{padding:2rem;max-width:860px;margin:0 auto;width:100%}
+  .top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem}
+  .game-logo{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:.1em;color:var(--deezer)}
+  .playlist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;padding-bottom:8rem}
+  .playlist-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+  .playlist-card:hover{border-color:var(--deezer);transform:translateY(-2px)}
+  .playlist-card.selected{border-color:var(--deezer);background:rgba(162,56,255,.08)}
+  .p-cover{width:100%;aspect-ratio:1;border-radius:8px;object-fit:cover;margin-bottom:.75rem;background:var(--border);display:block}
+  .p-cover-ph{width:100%;aspect-ratio:1;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:.75rem}
+  .p-name{font-weight:600;font-size:.85rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .p-count{font-size:.75rem;color:var(--muted);margin-top:.25rem}
+  .check-badge{position:absolute;top:.5rem;right:.5rem;width:22px;height:22px;background:var(--deezer);border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;font-size:.65rem;color:var(--white);font-weight:700}
+  .playlist-card.selected .check-badge{opacity:1}
+  .start-bar{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(transparent,var(--dark) 30%);padding:2rem;display:flex;justify-content:center;gap:1rem;align-items:center}
+
+  /* GAME */
+  #gameScreen{max-width:680px;margin:0 auto;width:100%;padding:2rem}
+  .game-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem}
+  .score-display{font-family:'Space Mono',monospace;font-size:.85rem;color:var(--muted)}
+  .round-display{font-family:'Space Mono',monospace;font-size:.8rem;color:var(--muted);text-align:center;margin-bottom:1.5rem}
+  .audio-center{display:flex;flex-direction:column;align-items:center;margin-bottom:2rem}
+  .waveform-container{width:100%;max-width:400px;height:80px;display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:1.25rem}
+  .wave-bar{width:4px;border-radius:2px;background:var(--deezer);height:6px}
+  .wave-bar.active{animation:wavePulse .5s ease-in-out infinite alternate}
+  @keyframes wavePulse{from{height:4px}to{height:var(--h,40px)}}
+  .attempts-track{display:flex;gap:.5rem;justify-content:center;margin-bottom:1.5rem}
+  .attempt-dot{width:12px;height:12px;border-radius:50%;background:var(--border);transition:background .3s}
+  .attempt-dot.used{background:var(--red)}
+  .attempt-dot.current{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+  .clip-info{font-family:'Space Mono',monospace;font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:.75rem;min-height:1.2em}
+  .play-btn{width:72px;height:72px;border-radius:50%;background:var(--deezer);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--white);transition:all .2s;margin-bottom:1rem}
+  .play-btn:hover{transform:scale(1.05);background:var(--deezer-hover);box-shadow:0 8px 32px rgba(162,56,255,.4)}
+  .play-btn:disabled{opacity:.35;cursor:not-allowed;transform:none!important}
+  .guess-section{margin-bottom:1.5rem}
+  .guess-input-wrap{position:relative;margin-bottom:.75rem}
+  .guess-input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;color:var(--white);font-family:'DM Sans',sans-serif;font-size:1rem;outline:none;transition:border-color .2s}
+  .guess-input:focus{border-color:var(--deezer)}
+  .suggestions{position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);z-index:100;max-height:240px;overflow-y:auto}
+  .suggestion-item{padding:.75rem 1.25rem;cursor:pointer;display:flex;align-items:center;gap:.75rem;transition:background .15s;border-bottom:1px solid var(--border)}
+  .suggestion-item:last-child{border-bottom:none}
+  .suggestion-item:hover{background:rgba(255,255,255,.05)}
+  .sug-cover{width:36px;height:36px;border-radius:4px;object-fit:cover;background:var(--border);flex-shrink:0}
+  .sug-name{font-weight:500;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sug-artist{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .action-row{display:flex;gap:.75rem}
+  .btn-skip{background:transparent;border:1px solid var(--border);color:var(--muted);padding:.75rem 1.25rem;border-radius:50px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;font-size:.9rem;transition:all .2s;flex-shrink:0}
+  .btn-skip:hover{border-color:var(--muted);color:var(--white)}
+  .btn-validate{flex:1;background:var(--deezer);border:none;color:var(--white);padding:.75rem 1.25rem;border-radius:50px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:.9rem;transition:all .2s}
+  .btn-validate:hover{background:var(--deezer-hover)}
+  .btn-validate:disabled{opacity:.3;cursor:not-allowed}
+  .result-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;text-align:center;display:none;animation:fadeUp .4s ease}
+  .result-panel.visible{display:block}
+  .result-panel.win{border-color:var(--deezer)}
+  .result-panel.lose{border-color:var(--red)}
+  .result-emoji{font-size:2.5rem;margin-bottom:.75rem}
+  .result-label{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:.1em;margin-bottom:.5rem}
+  .result-label.win{color:var(--deezer)}
+  .result-label.lose{color:var(--red)}
+  .result-song-info{display:flex;align-items:center;gap:1rem;background:var(--dark);border-radius:8px;padding:.75rem;margin:1rem 0;text-align:left}
+  .result-cover{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--border);flex-shrink:0}
+  .result-song-name{font-weight:600;font-size:1rem}
+  .result-artist{color:var(--muted);font-size:.85rem}
+  .points-badge{display:inline-block;background:rgba(162,56,255,.15);color:var(--deezer);border:1px solid rgba(162,56,255,.3);border-radius:50px;padding:.3rem 1rem;font-family:'Space Mono',monospace;font-size:.8rem;margin-bottom:1rem}
+  .btn-next{background:var(--white);color:var(--black);border:none;padding:.75rem 2rem;border-radius:50px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;font-size:.95rem;transition:all .2s}
+  .btn-next:hover{background:var(--deezer);color:var(--white)}
+
+  /* END */
+  #endScreen{align-items:center;justify-content:center;padding:2rem;text-align:center}
+  .end-box{max-width:480px;width:100%;animation:fadeUp .5s ease;padding:2rem}
+  .end-title{font-family:'Bebas Neue',sans-serif;font-size:3.5rem;letter-spacing:.1em;color:var(--deezer);margin-bottom:.5rem}
+  .end-score{font-family:'Space Mono',monospace;font-size:3rem;font-weight:700;margin-bottom:.5rem}
+  .end-desc{color:var(--muted);margin-bottom:2rem}
+  .end-history{text-align:left;margin-bottom:2rem}
+  .end-history-title{font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem}
+  .history-item{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--border)}
+  .history-item:last-child{border-bottom:none}
+  .h-cover{width:36px;height:36px;border-radius:4px;object-fit:cover;background:var(--border);flex-shrink:0}
+  .h-info{flex:1;overflow:hidden}
+  .h-name{font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .h-artist{font-size:.75rem;color:var(--muted)}
+  .h-pts{font-family:'Space Mono',monospace;font-size:.75rem;color:var(--deezer)}
+  .end-btns{display:flex;gap:1rem;justify-content:center}
+  .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--deezer);border-radius:50%;animation:spin .8s linear infinite;margin:2rem auto}
+  .toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--border);padding:.75rem 1.5rem;border-radius:50px;font-size:.9rem;transition:transform .3s;z-index:9999;white-space:nowrap;max-width:90vw;text-align:center}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10000;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem;text-align:center;padding:2rem}
+  #overlay.show{display:flex}
+  #overlay h2{font-family:'Bebas Neue',sans-serif;font-size:2rem}
+  #overlay p{color:var(--muted);font-size:.9rem;max-width:320px;line-height:1.5}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h2>Session expirée</h2>
+  <p>Ton token Deezer a expiré. Reconnecte-toi pour continuer.</p>
+  <button class="btn btn-deezer" style="width:auto" onclick="doLogin()">Se reconnecter</button>
+</div>
+
+<!-- LOGIN -->
+<div class="screen active" id="loginScreen">
+  <div class="bg-g g1"></div><div class="bg-g g2"></div>
+  <div class="login-box">
+    <div class="logo-text">Sound<br>Blind</div>
+    <div class="logo-sub">Devine la chanson</div>
+    <p style="color:var(--muted);font-size:.9rem;line-height:1.6;margin-bottom:2rem">Écoute des extraits de tes playlists Deezer et trouve le titre avant d'épuiser tes chances.</p>
+    <div class="config-box">
+      <label>Deezer App ID</label>
+      <input type="text" id="appIdInput" placeholder="Colle ton App ID ici"/>
+    </div>
+    <div class="hint-box">
+      📋 Redirect URI à ajouter dans ton <a href="https://developers.deezer.com/myapps" target="_blank">app Deezer Developer</a> :<br>
+      <code id="redirectHint"></code>
+      <br><br>⚠️ L'API Deezer nécessite que le fichier soit servi via un <strong>serveur HTTP</strong> (pas en local). Tu peux utiliser <a href="https://pages.github.com" target="_blank" style="color:var(--deezer)">GitHub Pages</a> ou tout autre hébergement.
+    </div>
+    <button class="btn btn-deezer" onclick="doLogin()">
+      <!-- Deezer icon (simplified) -->
+      <svg width="20" height="20" viewBox="0 0 32 32" fill="currentColor"><rect x="0" y="22" width="4" height="4"/><rect x="7" y="18" width="4" height="8"/><rect x="14" y="13" width="4" height="13"/><rect x="21" y="8" width="4" height="18"/><rect x="28" y="4" width="4" height="22"/></svg>
+      Connecter Deezer
+    </button>
+  </div>
+</div>
+
+<!-- PLAYLISTS -->
+<div class="screen" id="playlistScreen">
+  <div style="max-width:860px;margin:0 auto;width:100%;padding:2rem">
+    <div class="top-bar">
+      <div class="game-logo">SoundBlind</div>
+      <div style="display:flex;gap:.75rem;align-items:center">
+        <button class="btn btn-outline" onclick="logout()" style="padding:.5rem 1rem;font-size:.85rem">Déco</button>
+      </div>
+    </div>
+    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;margin-bottom:.5rem">Choisis une playlist</h2>
+    <p style="color:var(--muted);margin-bottom:1.5rem;font-size:.9rem">Sélectionne la playlist avec laquelle tu veux jouer</p>
+    <div class="playlist-grid" id="playlistGrid"><div class="spinner"></div></div>
+  </div>
+  <div class="start-bar" id="startBar" style="display:none">
+    <span id="selectedPlaylistName" style="color:var(--muted);font-size:.9rem"></span>
+    <button class="btn btn-deezer" onclick="startGame()">Jouer !</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div class="screen" id="gameScreen">
+  <div style="max-width:680px;margin:0 auto;width:100%;padding:2rem;display:flex;flex-direction:column">
+    <div class="game-header">
+      <div class="game-logo">SoundBlind</div>
+      <div class="score-display">Score : <span id="scoreDisplay">0</span></div>
+      <button class="btn btn-outline" onclick="quitGame()" style="padding:.5rem 1rem;font-size:.85rem">Quitter</button>
+    </div>
+    <div class="round-display">Manche <span id="roundDisplay">1</span> / <span id="totalRounds">10</span></div>
+    <div class="audio-center">
+      <div class="waveform-container" id="waveform"></div>
+      <div class="clip-info" id="clipInfo">Extrait 1 — 1s</div>
+      <div class="attempts-track" id="attemptsTrack"></div>
+      <button class="play-btn" id="playBtn" onclick="playClip()">▶</button>
+    </div>
+    <div class="guess-section">
+      <div class="guess-input-wrap">
+        <input class="guess-input" type="text" id="guessInput" placeholder="Cherche un titre..." autocomplete="off" oninput="onGuessInput()" onkeydown="onGuessKey(event)"/>
+        <div class="suggestions" id="suggestions" style="display:none"></div>
+      </div>
+      <div class="action-row">
+        <button class="btn-skip" onclick="skipAttempt()">Passer ⟶</button>
+        <button class="btn-validate" id="validateBtn" onclick="validateGuess()" disabled>Valider</button>
+      </div>
+      <div style="margin-top:.5rem;text-align:center">
+        <button class="btn-skip" id="skipSongBtn" onclick="skipSong()" style="font-size:.8rem;padding:.5rem 1rem;color:var(--muted);opacity:.7">⏭ Musique suivante</button>
+      </div>
+    </div>
+    <div class="result-panel" id="resultPanel">
+      <div class="result-emoji" id="resultEmoji"></div>
+      <div class="result-label" id="resultLabel"></div>
+      <div id="resultPoints" class="points-badge" style="display:none"></div>
+      <div class="result-song-info">
+        <img class="result-cover" id="resultCover" src="" alt="">
+        <div>
+          <div class="result-song-name" id="resultSongName"></div>
+          <div class="result-artist" id="resultArtist"></div>
+        </div>
+      </div>
+      <button class="btn-next" onclick="nextRound()">Manche suivante →</button>
+    </div>
+  </div>
+</div>
+
+<!-- END -->
+<div class="screen" id="endScreen">
+  <div class="end-box">
+    <div class="end-title">Résultats</div>
+    <div class="end-score" id="finalScore">0</div>
+    <div class="end-desc" id="finalDesc"></div>
+    <div class="end-history"><div class="end-history-title">Historique</div><div id="historyList"></div></div>
+    <div class="end-btns">
+      <button class="btn btn-outline" onclick="goToPlaylists()">Autre playlist</button>
+      <button class="btn btn-deezer" onclick="startGame()">Rejouer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Deezer SDK -->
+<script src="https://e-cdn-files.dzcdn.net/sdk/loader.js"></script>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+const MAX_ROUNDS = 10, MAX_ATTEMPTS = 6;
+const CLIP_DURATIONS = [1, 2, 4, 7, 11, 16];
+document.getElementById('redirectHint').textContent = REDIRECT_URI;
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let accessToken = null;
+let playlists = [], selectedPlaylist = null;
+let tracks = [], currentRound = 0, currentTrack = null;
+let allPlaylistTracks = [];
+let currentAttempt = 0, score = 0, roundHistory = [];
+let roundActive = false, selectedSuggestion = null;
+let clipTimer = null, waveInterval = null;
+let overlayShown = false;
+let audioEl = null; // HTML5 Audio element for Deezer previews
+
+// ── BOOT ───────────────────────────────────────────────────────────────────
+window.onload = async () => {
+  const savedId = localStorage.getItem('dz_app_id');
+  if (savedId) document.getElementById('appIdInput').value = savedId;
+
+  // Check for token in URL hash (Deezer implicit flow)
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  const token = params.get('access_token');
+  const errParam = params.get('error_reason');
+
+  if (token || errParam) {
+    window.history.replaceState({}, '', REDIRECT_URI);
+    if (errParam) { showToast('Connexion annulée'); buildWaveform(); return; }
+    const expires = parseInt(params.get('expires') || '3600');
+    saveToken(token, expires);
+    buildWaveform();
+    showScreen('playlistScreen');
+    loadPlaylists();
+    return;
+  }
+
+  // Stored token
+  const st = localStorage.getItem('dz_token');
+  const ex = parseInt(localStorage.getItem('dz_expiry') || '0');
+  if (st && Date.now() < ex - 30000) {
+    accessToken = st;
+    buildWaveform();
+    showScreen('playlistScreen');
+    loadPlaylists();
+    return;
+  }
+
+  buildWaveform();
+};
+
+function saveToken(token, expiresIn) {
+  accessToken = token;
+  localStorage.setItem('dz_token', token);
+  localStorage.setItem('dz_expiry', Date.now() + expiresIn * 1000);
+}
+
+// ── AUTH (Deezer implicit OAuth) ───────────────────────────────────────────
+function doLogin() {
+  const appId = document.getElementById('appIdInput').value.trim();
+  if (!appId) { showToast('Entre ton App ID Deezer !'); return; }
+  localStorage.setItem('dz_app_id', appId);
+  const perms = 'basic_access,manage_library,offline_access';
+  const url = `https://connect.deezer.com/oauth/auth.php?app_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&perms=${perms}&response_type=token`;
+  window.location.href = url;
+}
+
+function logout() {
+  accessToken = null; selectedPlaylist = null; overlayShown = false;
+  stopPlayback();
+  localStorage.removeItem('dz_token'); localStorage.removeItem('dz_expiry');
+  document.getElementById('overlay').classList.remove('show');
+  showScreen('loginScreen');
+}
+
+function showExpired() {
+  if (overlayShown) return;
+  overlayShown = true;
+  stopPlayback();
+  document.getElementById('overlay').classList.add('show');
+}
+
+// ── DEEZER API (via CORS proxy since Deezer doesn't support CORS for browser) ──
+// We use the public Deezer API with JSONP-like approach via fetch with a proxy.
+// For production, use your own CORS proxy or the DZ JS SDK.
+// Here we try direct fetch first (works on some hosts), then fallback to DZ SDK.
+async function dzFetch(endpoint) {
+  const url = `https://api.deezer.com/${endpoint}&access_token=${accessToken}&output=json&limit=50`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) {
+      if (data.error.code === 200 || data.error.code === 300) { showExpired(); throw new Error('401'); }
+      throw new Error('Deezer: ' + data.error.message);
+    }
+    return data;
+  } catch(e) {
+    // Fallback: try via a public CORS proxy
+    if (e.message === '401') throw e;
+    try {
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://api.deezer.com/${endpoint}&access_token=${accessToken}&output=json&limit=50`)}`;
+      const res2 = await fetch(proxyUrl);
+      if (!res2.ok) throw new Error('proxy HTTP ' + res2.status);
+      const data2 = await res2.json();
+      if (data2.error) {
+        if (data2.error.code === 200 || data2.error.code === 300) { showExpired(); throw new Error('401'); }
+        throw new Error('Deezer: ' + data2.error.message);
+      }
+      return data2;
+    } catch(e2) {
+      if (e2.message === '401') throw e2;
+      // Last resort: try allorigins
+      const proxyUrl2 = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.deezer.com/${endpoint}&access_token=${accessToken}&output=json&limit=50`)}`;
+      const res3 = await fetch(proxyUrl2);
+      const data3 = await res3.json();
+      if (data3.error) throw new Error('Deezer: ' + data3.error.message);
+      return data3;
+    }
+  }
+}
+
+// ── PLAYLISTS ──────────────────────────────────────────────────────────────
+async function loadPlaylists() {
+  try {
+    document.getElementById('playlistGrid').innerHTML = '<div class="spinner"></div>';
+    const data = await dzFetch('user/me/playlists?');
+    const items = (data.data || []).filter(p => p.nb_tracks >= 3);
+    playlists = items;
+    renderPlaylists();
+  } catch(e) {
+    if (e.message !== '401') showToast('Erreur chargement playlists — vérifie ton token et les permissions CORS');
+    console.error(e);
+  }
+}
+
+function renderPlaylists() {
+  const g = document.getElementById('playlistGrid'); g.innerHTML = '';
+  if (!playlists.length) {
+    g.innerHTML = '<div style="color:var(--muted);padding:2rem;grid-column:1/-1">Aucune playlist trouvée (3 titres minimum requis)</div>';
+    return;
+  }
+  playlists.forEach(p => {
+    const c = document.createElement('div'); c.className = 'playlist-card';
+    const imgUrl = p.picture_medium || p.picture || '';
+    c.innerHTML = `${imgUrl ? `<img class="p-cover" src="${imgUrl}" alt="">` : '<div class="p-cover-ph">🎵</div>'}<div class="p-name">${p.title}</div><div class="p-count">${p.nb_tracks} titres</div><div class="check-badge">✓</div>`;
+    c.onclick = () => {
+      document.querySelectorAll('.playlist-card').forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected'); selectedPlaylist = p;
+      document.getElementById('selectedPlaylistName').textContent = p.title;
+      document.getElementById('startBar').style.display = 'flex';
+    };
+    g.appendChild(c);
+  });
+}
+
+async function loadPlaylistTracks(playlistId) {
+  let url = `playlist/${playlistId}/tracks?`;
+  let items = [];
+  let index = 0;
+  while (true) {
+    const data = await dzFetch(url + `&index=${index}`);
+    const batch = data.data || [];
+    items = items.concat(batch);
+    if (!data.next || batch.length === 0) break;
+    index += batch.length;
+    if (index > 500) break; // safety cap
+  }
+  // Only keep tracks that have a preview URL
+  return items.filter(t => t && t.id && t.preview);
+}
+
+// ── GAME ───────────────────────────────────────────────────────────────────
+async function startGame() {
+  if (!selectedPlaylist) { showToast('Sélectionne une playlist !'); return; }
+  score = 0; currentRound = 0; roundHistory = [];
+  showScreen('gameScreen');
+  document.getElementById('scoreDisplay').textContent = '0';
+  try {
+    const all = await loadPlaylistTracks(selectedPlaylist.id);
+    if (all.length < 3) { showToast(`Playlist trop petite (${all.length} titres avec preview)`); goToPlaylists(); return; }
+    allPlaylistTracks = [...all];
+    tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
+    document.getElementById('totalRounds').textContent = tracks.length;
+    buildWaveform(); loadRound();
+  } catch(e) {
+    if (e.message !== '401') { showToast('Erreur chargement'); console.error(e); }
+  }
+}
+
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+function loadRound() {
+  currentTrack = tracks[currentRound]; currentAttempt = 0; roundActive = true; selectedSuggestion = null;
+  clearClipTimer(); stopPlayback();
+  document.getElementById('roundDisplay').textContent = currentRound + 1;
+  document.getElementById('resultPanel').className = 'result-panel';
+  document.getElementById('guessInput').value = '';
+  document.getElementById('suggestions').style.display = 'none';
+  document.getElementById('validateBtn').disabled = true;
+  document.getElementById('clipInfo').textContent = `Extrait 1 — ${CLIP_DURATIONS[0]}s`;
+  renderAttempts();
+}
+
+function renderAttempts(){
+  const t = document.getElementById('attemptsTrack'); t.innerHTML = '';
+  for(let i = 0; i < MAX_ATTEMPTS; i++){
+    const d = document.createElement('div');
+    d.className = i < currentAttempt ? 'attempt-dot used' : i === currentAttempt ? 'attempt-dot current' : 'attempt-dot';
+    t.appendChild(d);
+  }
+}
+
+// ── AUDIO (HTML5 Audio with Deezer preview URLs) ───────────────────────────
+async function playClip() {
+  if (!currentTrack?.preview) { showToast('Pas de preview disponible pour ce titre'); return; }
+  const dur = CLIP_DURATIONS[Math.min(currentAttempt, CLIP_DURATIONS.length - 1)];
+  clearClipTimer(); stopWave();
+
+  // Stop any existing audio
+  if (audioEl) { audioEl.pause(); audioEl.src = ''; audioEl = null; }
+
+  audioEl = new Audio();
+  audioEl.crossOrigin = 'anonymous';
+  audioEl.src = currentTrack.preview; // Deezer preview is a 30s MP3
+  audioEl.volume = 1;
+
+  // Start at a random point within the first 14s of the preview (leaving room for clip)
+  const startAt = Math.random() * 14;
+  audioEl.currentTime = startAt;
+
+  try {
+    await audioEl.play();
+  } catch(e) {
+    showToast('Erreur lecture audio'); console.error(e); return;
+  }
+
+  document.getElementById('playBtn').textContent = '⏸';
+  document.getElementById('clipInfo').textContent = `⏱ ${dur}s en cours...`;
+  startWave();
+
+  clipTimer = setTimeout(() => {
+    stopPlayback();
+    document.getElementById('clipInfo').textContent = `✓ Extrait ${currentAttempt + 1} joué (${dur}s)`;
+  }, dur * 1000);
+}
+
+function stopPlayback() {
+  clearClipTimer(); stopWave();
+  document.getElementById('playBtn').textContent = '▶';
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.src = '';
+    audioEl = null;
+  }
+}
+
+function clearClipTimer(){if(clipTimer){clearTimeout(clipTimer);clipTimer=null;}}
+function startWave(){const b=document.querySelectorAll('.wave-bar');b.forEach(x=>x.classList.add('active'));waveInterval=setInterval(()=>b.forEach(x=>x.style.setProperty('--h',(Math.random()*50+4)+'px')),100);}
+function stopWave(){clearInterval(waveInterval);waveInterval=null;document.querySelectorAll('.wave-bar').forEach(b=>{b.classList.remove('active');b.style.height='6px';});}
+
+// ── GUESS ──────────────────────────────────────────────────────────────────
+function onGuessInput(){
+  const v = document.getElementById('guessInput').value.trim();
+  document.getElementById('validateBtn').disabled = v.length < 1; selectedSuggestion = null;
+  if(v.length >= 2) searchSuggestions(v); else document.getElementById('suggestions').style.display = 'none';
+}
+function onGuessKey(e){if(e.key==='Enter')validateGuess();if(e.key==='Escape')document.getElementById('suggestions').style.display='none';}
+
+function searchSuggestions(q){
+  const ql = q.toLowerCase();
+  const r = allPlaylistTracks.filter(t =>
+    (t.title || '').toLowerCase().includes(ql) ||
+    (t.artist?.name || '').toLowerCase().includes(ql)
+  ).slice(0, 7);
+  const box = document.getElementById('suggestions');
+  if(!r.length){box.style.display='none';return;}
+  box.innerHTML = '';
+  r.forEach(t => {
+    const item = document.createElement('div'); item.className = 'suggestion-item';
+    const imgUrl = t.album?.cover_small || t.album?.cover || '';
+    item.innerHTML = `${imgUrl ? `<img class="sug-cover" src="${imgUrl}" alt="">` : '<div class="sug-cover"></div>'}<div><div class="sug-name">${t.title}</div><div class="sug-artist">${t.artist?.name || ''}</div></div>`;
+    item.onclick = () => {
+      document.getElementById('guessInput').value = `${t.title} — ${t.artist?.name || ''}`;
+      selectedSuggestion = t; box.style.display = 'none';
+      document.getElementById('validateBtn').disabled = false;
+    };
+    box.appendChild(item);
+  });
+  box.style.display = 'block';
+}
+
+function validateGuess(){
+  if(!roundActive) return;
+  if(!selectedSuggestion){showToast('Sélectionne une chanson dans la liste');return;}
+  if(selectedSuggestion.id === currentTrack.id) winRound();
+  else { showToast('Mauvaise réponse ! 🎵'); failAttempt(); }
+}
+function skipAttempt(){if(!roundActive)return;failAttempt(true);}
+function failAttempt(skipped=false){
+  const dots = document.querySelectorAll('.attempt-dot');
+  if(dots[currentAttempt]) dots[currentAttempt].className = 'attempt-dot used';
+  currentAttempt++;
+  if(currentAttempt >= MAX_ATTEMPTS){loseRound();return;}
+  if(dots[currentAttempt]) dots[currentAttempt].className = 'attempt-dot current';
+  document.getElementById('guessInput').value = ''; document.getElementById('validateBtn').disabled = true; selectedSuggestion = null;
+  document.getElementById('clipInfo').textContent = `Extrait ${currentAttempt + 1} — ${CLIP_DURATIONS[Math.min(currentAttempt, CLIP_DURATIONS.length-1)]}s disponible`;
+  if(!skipped) showToast('Essaie encore avec un extrait plus long !');
+}
+function winRound(){
+  roundActive = false; stopPlayback();
+  const pts = [1000,800,600,400,200,100][Math.min(currentAttempt, 5)];
+  score += pts; document.getElementById('scoreDisplay').textContent = score;
+  roundHistory.push({track:currentTrack, won:true, pts});
+  showResult(true, pts);
+}
+function loseRound(){
+  roundActive = false; stopPlayback();
+  roundHistory.push({track:currentTrack, won:false, pts:0});
+  showResult(false, 0);
+}
+function showResult(won, pts){
+  const p = document.getElementById('resultPanel');
+  p.className = `result-panel visible ${won?'win':'lose'}`;
+  document.getElementById('resultEmoji').textContent = won ? '🎉' : '😞';
+  const l = document.getElementById('resultLabel');
+  l.className = `result-label ${won?'win':'lose'}`;
+  l.textContent = won ? 'Bravo !' : 'Dommage...';
+  const pEl = document.getElementById('resultPoints');
+  if(won){pEl.textContent = `+${pts} pts`; pEl.style.display = 'inline-block';}
+  else pEl.style.display = 'none';
+  const imgUrl = currentTrack.album?.cover_medium || currentTrack.album?.cover || '';
+  document.getElementById('resultCover').src = imgUrl;
+  document.getElementById('resultSongName').textContent = currentTrack.title;
+  document.getElementById('resultArtist').textContent = currentTrack.artist?.name || '';
+}
+function nextRound(){currentRound++;if(currentRound>=tracks.length)showEndScreen();else loadRound();}
+function skipSong(){if(!roundActive)return;roundActive=false;stopPlayback();roundHistory.push({track:currentTrack,won:false,pts:0});showResult(false,0);}
+function quitGame(){stopPlayback();showEndScreen();}
+function showEndScreen(){
+  stopPlayback(); showScreen('endScreen');
+  document.getElementById('finalScore').textContent = score;
+  const pct = Math.round((score/(tracks.length*1000))*100);
+  document.getElementById('finalDesc').textContent = `${pct}% du score max — ${pct>=80?'🏆 Expert musical !':pct>=50?'🎵 Pas mal !':'🎸 Continue !'}`;
+  const list = document.getElementById('historyList'); list.innerHTML = '';
+  roundHistory.forEach(h => {
+    const item = document.createElement('div'); item.className = 'history-item';
+    const imgUrl = h.track.album?.cover_small || h.track.album?.cover || '';
+    item.innerHTML = `<span style="font-size:1rem;flex-shrink:0">${h.won?'✅':'❌'}</span>${imgUrl?`<img class="h-cover" src="${imgUrl}" alt="">`:'<div class="h-cover"></div>'}<div class="h-info"><div class="h-name">${h.track.title}</div><div class="h-artist">${h.track.artist?.name||''}</div></div><div class="h-pts">${h.won?'+'+h.pts:'—'}</div>`;
+    list.appendChild(item);
+  });
+}
+function goToPlaylists(){selectedPlaylist=null;document.querySelectorAll('.playlist-card').forEach(c=>c.classList.remove('selected'));document.getElementById('startBar').style.display='none';showScreen('playlistScreen');}
+function buildWaveform(){const c=document.getElementById('waveform');if(!c)return;c.innerHTML='';for(let i=0;i<48;i++){const b=document.createElement('div');b.className='wave-bar';b.style.setProperty('--h',(Math.random()*44+4)+'px');c.appendChild(b);}}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
+let toastTimer;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800);}
+</script>
+</body>
+</html>
