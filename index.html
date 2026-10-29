@@ -190,7 +190,7 @@
     <div class="top-bar">
       <div class="game-logo">SoundBlind</div>
       <div style="display:flex;gap:.75rem;align-items:center">
-        <span id="deviceBadge" style="font-family:'Space Mono',monospace;font-size:.7rem;color:var(--green);background:rgba(29,185,84,.1);border:1px solid rgba(29,185,84,.3);padding:.3rem .75rem;border-radius:50px"></span>
+        <span id="deviceBadge" title="Changer d'appareil" onclick="showScreen('deviceScreen');loadDevices()" style="cursor:pointer;font-family:'Space Mono',monospace;font-size:.7rem;color:var(--green);background:rgba(29,185,84,.1);border:1px solid rgba(29,185,84,.3);padding:.3rem .75rem;border-radius:50px"></span>
         <button class="btn btn-outline" onclick="logout()" style="padding:.5rem 1rem;font-size:.85rem">Déco</button>
       </div>
     </div>
@@ -356,7 +356,7 @@ window.onload = async () => {
       selectedDeviceName = devName;
       initWebPlayer();
       showScreen('playlistScreen');
-      document.getElementById('deviceBadge').textContent = '🖥 ' + devName;
+      document.getElementById('deviceBadge').textContent = (devName === PREVIEW_NAME ? '🎧 ' : '🖥 ') + devName + ' ✎';
       loadPlaylists();
     } else {
       showScreen('deviceScreen');
@@ -484,7 +484,69 @@ async function getPlayerState() {
     return await r.json();
   } catch (e) { return { error: String(e) }; }
 }
-function curDevice() { return selectedDeviceName === WEB_PLAYER_NAME ? webDeviceId : selectedDeviceId; }
+// ── MODE « EXTRAITS » (sans lecture Spotify) ───────────────────────────────
+// Spotify ne fournit plus d'extraits audio (preview_url supprimé). On retrouve donc chaque titre
+// (nom + artiste) dans l'API de recherche iTunes, qui donne un extrait de 30 s sans connexion.
+const PREVIEW_NAME = 'Extraits 30 s (sans lecture Spotify)';
+const isPreviewMode = () => selectedDeviceName === PREVIEW_NAME;
+let audioEl = null;
+const previewCache = {};
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'itcb' + Math.random().toString(36).slice(2);
+    const sc = document.createElement('script');
+    const done = () => { delete window[cb]; sc.remove(); };
+    window[cb] = d => { done(); resolve(d); };
+    sc.onerror = () => { done(); reject(new Error('jsonp')); };
+    setTimeout(() => { if (window[cb]) { done(); reject(new Error('timeout')); } }, 8000);
+    sc.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    document.head.appendChild(sc);
+  });
+}
+const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/ - .*$/, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+async function findPreview(track) {
+  if (track.id in previewCache) return previewCache[track.id];
+  let url = null;
+  try {
+    const artist = track.artists?.[0]?.name || '';
+    const d = await jsonp('https://itunes.apple.com/search?media=music&entity=song&limit=10&term=' + encodeURIComponent(track.name + ' ' + artist));
+    const tn = norm(track.name), an = norm(artist);
+    const hit = (d.results || []).find(r => r.previewUrl && norm(r.trackName) === tn && (norm(r.artistName).includes(an) || an.includes(norm(r.artistName))))
+             || (d.results || []).find(r => r.previewUrl && norm(r.trackName).includes(tn) && norm(r.artistName).includes(an));
+    url = hit?.previewUrl || null;
+  } catch (e) { dbg('recherche extrait échouée: ' + e.message); }
+  previewCache[track.id] = url;
+  return url;
+}
+// Garde `n` titres pour lesquels un extrait existe
+async function pickTracksWithPreview(all, n) {
+  const pool = shuffle(all), picked = [];
+  let i = 0;
+  while (picked.length < n && i < pool.length) {
+    const batch = pool.slice(i, i + 5); i += 5;
+    const urls = await Promise.all(batch.map(findPreview));
+    batch.forEach((t, k) => { if (urls[k] && picked.length < n) picked.push({ ...t, _preview: urls[k] }); });
+  }
+  return picked;
+}
+async function playPreview(dur) {
+  const url = currentTrack?._preview;
+  if (!url) { showToast('Pas d\'extrait pour ce titre'); return; }
+  if (audioEl) { audioEl.pause(); audioEl = null; }
+  audioEl = new Audio(url); audioEl.volume = 1;
+  try { await audioEl.play(); }
+  catch (e) { dbg('audio bloqué: ' + e.message, true); showToast('Lecture bloquée par le navigateur — clique à nouveau sur ▶'); return; }
+  document.getElementById('playBtn').textContent = '⏸';
+  document.getElementById('clipInfo').textContent = `⏱ ${dur}s en cours...`;
+  startWave();
+  clipTimer = setTimeout(async () => {
+    await stopPlayback();
+    document.getElementById('clipInfo').textContent = `✓ Extrait ${currentAttempt+1} joué (${dur}s)`;
+  }, dur * 1000);
+}
+
+function curDevice() { return isPreviewMode() ? 'preview' : selectedDeviceName === WEB_PLAYER_NAME ? webDeviceId : selectedDeviceId; }
 
 // Lit le message d'erreur renvoyé par Spotify pour l'afficher
 async function spotifyError(res) {
@@ -503,19 +565,11 @@ async function loadDevices() {
     const devices = (data?.devices || []).slice();
     if (webDeviceId && !devices.some(d => d.id === webDeviceId)) devices.unshift({ id: webDeviceId, name: WEB_PLAYER_NAME, type: 'Computer', is_active: false });
 
-    if (!devices.length) {
-      list.innerHTML = `<div style="text-align:center;padding:1.5rem;color:var(--muted)">
-        <div style="font-size:2rem;margin-bottom:.5rem">🖥</div>
-        <div style="font-weight:600;margin-bottom:.5rem">Aucun appareil détecté</div>
-        <div style="font-size:.82rem;line-height:1.6">Ouvre l'app Spotify sur ton PC<br>puis clique Rafraîchir<br>(le lecteur navigateur peut mettre quelques secondes à apparaître)</div>
-      </div>`;
-      return;
-    }
-
+    devices.push({ id: 'preview', name: PREVIEW_NAME, type: 'Marche avec ou sans Premium', is_active: false, _preview: true });
     list.innerHTML = '';
     devices.forEach(d => {
       const icons = { Computer:'🖥', Smartphone:'📱', Speaker:'🔊', TV:'📺' };
-      const icon = icons[d.type] || '🎵';
+      const icon = d._preview ? '🎧' : (icons[d.type] || '🎵');
       const item = document.createElement('div');
       item.className = 'device-item' + (d.is_active ? ' selected' : '');
       item.innerHTML = `<span class="device-icon">${icon}</span><div><div class="device-name">${esc(d.name)}</div><div class="device-type">${esc(d.type)}</div></div>${d.is_active ? '<span class="device-active">● Actif</span>' : ''}`;
@@ -542,7 +596,7 @@ function confirmDevice() {
   lastTransferred = null;
   localStorage.setItem('sb_device_id', selectedDeviceId);
   localStorage.setItem('sb_device_name', selectedDeviceName);
-  document.getElementById('deviceBadge').textContent = '🖥 ' + selectedDeviceName;
+  document.getElementById('deviceBadge').textContent = (isPreviewMode() ? '🎧 ' : '🖥 ') + selectedDeviceName + ' ✎';
   showScreen('playlistScreen');
   loadPlaylists();
 }
@@ -609,7 +663,11 @@ async function startGame() {
     const all = await loadPlaylistTracks(selectedPlaylist.id);
     if (all.length < 3) { showToast(`Playlist trop petite (${all.length} titres)`); goToPlaylists(); return; }
     allPlaylistTracks = [...all];
-    tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
+    if (isPreviewMode()) {
+      showToast('Recherche des extraits…');
+      tracks = await pickTracksWithPreview(all, Math.min(MAX_ROUNDS, all.length));
+      if (tracks.length < 3) { showToast('Trop peu d\'extraits trouvés pour cette playlist'); goToPlaylists(); return; }
+    } else tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
     document.getElementById('totalRounds').textContent = tracks.length;
     buildWaveform(); loadRound();
   } catch(e) {
@@ -643,6 +701,7 @@ function renderAttempts(){
 async function playClip() {
   const dur = CLIP_DURATIONS[Math.min(currentAttempt, CLIP_DURATIONS.length-1)];
   clearClipTimer(); stopWave();
+  if (isPreviewMode()) { dbg('▶ mode extraits — ' + currentTrack?.name); return playPreview(dur); }
   initWebPlayer();
   const dev = curDevice();
   dbg(`▶ clic — appareil: ${selectedDeviceName} (${dev || 'inconnu'}) — titre: ${currentTrack?.name}`);
@@ -704,7 +763,7 @@ async function playClip() {
       if (st?.is_playing) dbg(`Spotify joue bien sur « ${st.device?.name} » : ${st.item?.name}`);
       else {
         dbg('⚠ Spotify ne joue PAS. État: ' + JSON.stringify(st?.empty ? 'aucun appareil actif' : st?.error ? st : { appareil: st?.device?.name, is_playing: st?.is_playing, restrictions: st?.actions?.disallows }), true);
-        showToast('Spotify a accepté la commande mais ne joue pas — voir « Diagnostic »');
+        showToast('Spotify ne joue pas — change d\'appareil et choisis « Extraits 30 s »');
       }
     }, 700);
 
@@ -714,6 +773,8 @@ async function playClip() {
 async function stopPlayback() {
   clearClipTimer(); stopWave();
   document.getElementById('playBtn').textContent = '▶';
+  if (audioEl) { audioEl.pause(); audioEl = null; }
+  if (isPreviewMode()) return;
   try {
     await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${curDevice()}`, {
       method: 'PUT', headers: { Authorization: `Bearer ${accessToken}` }
