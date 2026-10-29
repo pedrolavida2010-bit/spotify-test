@@ -138,6 +138,9 @@
   #overlay p{color:var(--muted);font-size:.9rem;max-width:320px;line-height:1.5}
   @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .mode-toggle{display:inline-flex;border:1px solid var(--border);border-radius:50px;overflow:hidden;margin-bottom:1.5rem}
+  .mode-toggle button{background:transparent;border:none;color:var(--muted);padding:.55rem 1.1rem;font-family:'DM Sans',sans-serif;font-weight:500;font-size:.85rem;cursor:pointer;transition:all .2s}
+  .mode-toggle button.on{background:var(--green);color:var(--black);font-weight:600}
 </style>
 </head>
 <body>
@@ -195,7 +198,11 @@
       </div>
     </div>
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;margin-bottom:.5rem">Choisis une playlist</h2>
-    <p style="color:var(--muted);margin-bottom:1.5rem;font-size:.9rem">Sélectionne la playlist avec laquelle tu veux jouer</p>
+    <p style="color:var(--muted);margin-bottom:1rem;font-size:.9rem">Sélectionne la playlist avec laquelle tu veux jouer</p>
+    <div class="mode-toggle" id="startModeToggle">
+      <button data-m="start" onclick="setStartMode('start')">⏮ Début du morceau</button>
+      <button data-m="random" onclick="setStartMode('random')">🎲 Début aléatoire</button>
+    </div>
     <div class="playlist-grid" id="playlistGrid"><div class="spinner"></div></div>
   </div>
   <div class="start-bar" id="startBar" style="display:none">
@@ -294,6 +301,7 @@ async function pkceChallenge(v){const d=await crypto.subtle.digest('SHA-256',new
 
 // ── BOOT ───────────────────────────────────────────────────────────────────
 window.onload = async () => {
+  renderStartMode();
   // Spotify refuse "localhost" comme redirect URI (uniquement https ou 127.0.0.1) → on bascule sur 127.0.0.1
   if (location.hostname === 'localhost') { location.replace(location.href.replace('//localhost', '//127.0.0.1')); return; }
   if (location.protocol === 'file:') {
@@ -329,8 +337,7 @@ window.onload = async () => {
       if (d.access_token) {
         saveToken(d.access_token, d.expires_in || 3600, d.refresh_token);
         buildWaveform();
-        showScreen('deviceScreen');
-        loadDevices();
+        useExtraits();
       } else {
         showToast('Erreur : ' + (d.error_description || d.error || '?'));
         buildWaveform();
@@ -359,8 +366,7 @@ window.onload = async () => {
       document.getElementById('deviceBadge').textContent = (devName === PREVIEW_NAME ? '🎧 ' : '🖥 ') + devName + ' ✎';
       loadPlaylists();
     } else {
-      showScreen('deviceScreen');
-      loadDevices();
+      useExtraits();
     }
     return;
   }
@@ -484,6 +490,26 @@ async function getPlayerState() {
     return await r.json();
   } catch (e) { return { error: String(e) }; }
 }
+// ── MODE DE DÉPART : début du morceau ou point aléatoire ─────────────────────
+let startMode = 'start', roundOffsetPreview = 0, roundOffsetSpotify = 0;
+try { startMode = localStorage.getItem('sb_start_mode') === 'random' ? 'random' : 'start'; } catch(_) {}
+function setStartMode(m) {
+  startMode = m;
+  try { localStorage.setItem('sb_start_mode', m); } catch(_) {}
+  renderStartMode();
+}
+function renderStartMode() {
+  document.querySelectorAll('#startModeToggle button').forEach(b => b.classList.toggle('on', b.dataset.m === startMode));
+}
+// Tiré une fois par manche : toutes les tentatives réutilisent le même passage, de plus en plus long
+function pickRoundOffsets(track) {
+  const maxClip = Math.max(...CLIP_DURATIONS);
+  if (startMode !== 'random') { roundOffsetPreview = 0; roundOffsetSpotify = 0; return; }
+  roundOffsetPreview = Math.random() * (30 - maxClip - 1);                       // l'extrait fait 30 s
+  const total = (track?.duration_ms || 0) / 1000;
+  roundOffsetSpotify = total > maxClip + 10 ? Math.random() * (total - maxClip - 10) : 0;
+}
+
 // ── MODE « EXTRAITS » (sans lecture Spotify) ───────────────────────────────
 // Spotify ne fournit plus d'extraits audio (preview_url supprimé). On retrouve donc chaque titre
 // (nom + artiste) dans l'API de recherche iTunes, qui donne un extrait de 30 s sans connexion.
@@ -543,7 +569,11 @@ async function playPreview(dur) {
   const url = currentTrack?._preview;
   if (!url) { showToast('Pas d\'extrait pour ce titre'); return; }
   if (audioEl) { audioEl.pause(); audioEl = null; }
-  audioEl = new Audio(url); audioEl.volume = 1;
+  const a = audioEl = new Audio(); a.preload = 'auto'; a.volume = 1; a.src = url;
+  if (roundOffsetPreview > 0) {
+    await new Promise(res => { a.addEventListener('loadedmetadata', res, { once: true }); a.addEventListener('error', res, { once: true }); setTimeout(res, 4000); });
+    try { a.currentTime = roundOffsetPreview; } catch (_) {}
+  }
   try { await audioEl.play(); }
   catch (e) { dbg('audio bloqué: ' + e.message, true); showToast('Lecture bloquée par le navigateur — clique à nouveau sur ▶'); return; }
   document.getElementById('playBtn').textContent = '⏸';
@@ -555,6 +585,12 @@ async function playPreview(dur) {
   }, dur * 1000);
 }
 
+function useExtraits() {
+  selectedDeviceId = 'preview'; selectedDeviceName = PREVIEW_NAME;
+  localStorage.setItem('sb_device_id', 'preview'); localStorage.setItem('sb_device_name', PREVIEW_NAME);
+  document.getElementById('deviceBadge').textContent = '🎧 ' + PREVIEW_NAME + ' ✎';
+  showScreen('playlistScreen'); loadPlaylists();
+}
 function curDevice() { return isPreviewMode() ? 'preview' : selectedDeviceName === WEB_PLAYER_NAME ? webDeviceId : selectedDeviceId; }
 
 // Lit le message d'erreur renvoyé par Spotify pour l'afficher
@@ -574,7 +610,7 @@ async function loadDevices() {
     const devices = (data?.devices || []).slice();
     if (webDeviceId && !devices.some(d => d.id === webDeviceId)) devices.unshift({ id: webDeviceId, name: WEB_PLAYER_NAME, type: 'Computer', is_active: false });
 
-    devices.push({ id: 'preview', name: PREVIEW_NAME, type: 'Marche avec ou sans Premium', is_active: false, _preview: true });
+    devices.unshift({ id: 'preview', name: PREVIEW_NAME, type: 'Recommandé — marche sans Premium', is_active: false, _preview: true });
     list.innerHTML = '';
     devices.forEach(d => {
       const icons = { Computer:'🖥', Smartphone:'📱', Speaker:'🔊', TV:'📺' };
@@ -695,7 +731,7 @@ async function startGame() {
 function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
 function loadRound() {
-  currentTrack=tracks[currentRound]; currentAttempt=0; roundActive=true; selectedSuggestion=null;
+  currentTrack=tracks[currentRound]; pickRoundOffsets(currentTrack); currentAttempt=0; roundActive=true; selectedSuggestion=null;
   clearClipTimer();
   document.getElementById('roundDisplay').textContent=currentRound+1;
   document.getElementById('resultPanel').className='result-panel';
@@ -742,7 +778,7 @@ async function playClip() {
     const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${dev}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: [currentTrack.uri], position_ms: 30000 })
+      body: JSON.stringify({ uris: [currentTrack.uri], position_ms: Math.round(roundOffsetSpotify * 1000) })
     });
 
     dbg('play → HTTP ' + res.status);
