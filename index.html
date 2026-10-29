@@ -463,7 +463,7 @@ function initWebPlayer() {
   webPlayer.addListener('ready', ({device_id}) => { webDeviceId = device_id; dbg('SDK prêt, appareil ' + device_id); if (document.getElementById('deviceScreen').classList.contains('active')) loadDevices(); });
   webPlayer.addListener('not_ready', () => { webDeviceId = null; });
   webPlayer.addListener('initialization_error', e => { console.error('SDK init', e); dbg('SDK initialization_error: ' + (e?.message||'') + ' (navigateur sans DRM/Widevine ?)', true); });
-  webPlayer.addListener('authentication_error', e => { console.error('SDK auth', e); dbg('SDK authentication_error: ' + (e?.message||''), true); showToast('Autorisation Spotify insuffisante — déconnecte-toi puis reconnecte-toi'); });
+  webPlayer.addListener('authentication_error', e => { console.error('SDK auth', e); dbg('SDK authentication_error: ' + (e?.message||''), selectedDeviceName === WEB_PLAYER_NAME); if (selectedDeviceName === WEB_PLAYER_NAME) showToast('Autorisation Spotify insuffisante — déconnecte-toi puis reconnecte-toi'); });
   webPlayer.addListener('account_error', e => { dbg('SDK account_error: ' + (e?.message||''), true); showToast('Spotify Premium requis pour le lecteur navigateur'); });
   webPlayer.addListener('playback_error', e => { console.error('SDK playback', e); dbg('SDK playback_error: ' + (e?.message||''), true); });
   webPlayer.addListener('autoplay_failed', () => { dbg('SDK autoplay_failed : le navigateur bloque le son — clique sur la page puis ▶', true); showToast('Son bloqué par le navigateur — clique à nouveau sur ▶'); });
@@ -505,12 +505,21 @@ function jsonp(url) {
 }
 const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/ - .*$/, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+async function itunesSearch(term) {
+  const url = 'https://itunes.apple.com/search?media=music&entity=song&limit=10&term=' + encodeURIComponent(term);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { const r = await fetch(url); if (r.ok) return await r.json(); } catch (_) {}
+    try { return await jsonp(url); } catch (_) {}
+    await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));   // iTunes limite le débit : on patiente puis on réessaie
+  }
+  throw new Error('iTunes indisponible');
+}
 async function findPreview(track) {
   if (track.id in previewCache) return previewCache[track.id];
   let url = null;
   try {
     const artist = track.artists?.[0]?.name || '';
-    const d = await jsonp('https://itunes.apple.com/search?media=music&entity=song&limit=10&term=' + encodeURIComponent(track.name + ' ' + artist));
+    const d = await itunesSearch(track.name + ' ' + artist);
     const tn = norm(track.name), an = norm(artist);
     const hit = (d.results || []).find(r => r.previewUrl && norm(r.trackName) === tn && (norm(r.artistName).includes(an) || an.includes(norm(r.artistName))))
              || (d.results || []).find(r => r.previewUrl && norm(r.trackName).includes(tn) && norm(r.artistName).includes(an));
@@ -524,7 +533,7 @@ async function pickTracksWithPreview(all, n) {
   const pool = shuffle(all), picked = [];
   let i = 0;
   while (picked.length < n && i < pool.length) {
-    const batch = pool.slice(i, i + 5); i += 5;
+    const batch = pool.slice(i, i + 3); i += 3;
     const urls = await Promise.all(batch.map(findPreview));
     batch.forEach((t, k) => { if (urls[k] && picked.length < n) picked.push({ ...t, _preview: urls[k] }); });
   }
@@ -659,17 +668,21 @@ async function startGame() {
   score = 0; currentRound = 0; roundHistory = [];
   showScreen('gameScreen');
   document.getElementById('scoreDisplay').textContent = '0';
+  currentTrack = null; roundActive = false;
+  document.getElementById('playBtn').disabled = true;
+  document.getElementById('clipInfo').textContent = 'Chargement de la playlist…';
   try {
     const all = await loadPlaylistTracks(selectedPlaylist.id);
     if (all.length < 3) { showToast(`Playlist trop petite (${all.length} titres)`); goToPlaylists(); return; }
     allPlaylistTracks = [...all];
     if (isPreviewMode()) {
-      showToast('Recherche des extraits…');
+      showToast('Recherche des extraits…'); document.getElementById('clipInfo').textContent = 'Recherche des extraits…';
       tracks = await pickTracksWithPreview(all, Math.min(MAX_ROUNDS, all.length));
       if (tracks.length < 3) { showToast('Trop peu d\'extraits trouvés pour cette playlist'); goToPlaylists(); return; }
     } else tracks = shuffle(all).slice(0, Math.min(MAX_ROUNDS, all.length));
     document.getElementById('totalRounds').textContent = tracks.length;
     buildWaveform(); loadRound();
+    document.getElementById('playBtn').disabled = false;
   } catch(e) {
     if (!['401','quota'].includes(e.message)) {
       showToast(e.message === 'Spotify 403' ? 'Playlist inaccessible (propriétaire/collaborateur requis)' : 'Erreur chargement');
@@ -699,6 +712,7 @@ function renderAttempts(){
 }
 
 async function playClip() {
+  if (!currentTrack) return;
   const dur = CLIP_DURATIONS[Math.min(currentAttempt, CLIP_DURATIONS.length-1)];
   clearClipTimer(); stopWave();
   if (isPreviewMode()) { dbg('▶ mode extraits — ' + currentTrack?.name); return playPreview(dur); }
